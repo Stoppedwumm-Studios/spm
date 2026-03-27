@@ -6,7 +6,7 @@ on:
       - 'v*'
 
 permissions:
-  id-token: write  # Required for OIDC
+  id-token: write
   contents: read
 
 jobs:
@@ -17,9 +17,14 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '16.20.2'
-          registry-url: 'https://registry.npmjs.org'
+          node-version: '20' # Use Node 20+ for Trusted Publishing support
+          # REMOVE registry-url if you aren't using a secret token. 
+          # npm will auto-detect the OIDC environment.
+
       - run: npm ci
       
       - run: node chore/updatePackage.js ${{ github.ref_name }}
-      - run: npm publish
+      
+      # Use --provenance to link the build to GitHub Actions
+      # Use --access public if this is the first time publishing this package
+      - run: npm publish --provenance --access public
