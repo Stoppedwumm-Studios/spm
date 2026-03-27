@@ -2,63 +2,54 @@
 import { program } from "commander";
 import chalk from "chalk";
 import { download } from "./download.js";
+import fetch from "node-fetch";
+import fs from "fs";
+import path from "path";
 
+// --- INSTALL COMMAND (For individual downloads) ---
 program
     .command("install <name> [destination] [version]")
     .description("Downloads package")
     .action(async function (name, destination, version) {
         try {
-            // 1. Fetch the registry
             const response = await fetch("https://stoppedwumm-studios.github.io/st-registry/index.json");
             const modulesData = await response.json();
             const modules = modulesData.modules;
 
-            // 2. Find the module (Case-insensitive)
-            const moduleKey = Object.keys(modules).find(key => 
-                modules[key].name.toLowerCase() === name.toLowerCase()
+            const module = modules.find(m => 
+                m.name.toLowerCase() === name.toLowerCase()
             );
 
-            if (!moduleKey) {
+            if (!module) {
                 console.error(chalk.red(`Module "${name}" not found in registry.`));
                 return;
             }
 
-            const module = modules[moduleKey];
             const mjson = await (await fetch(module["url"])).json();
             console.log("Found module under path:", chalk.bold(module["path"]));
 
-            // 3. Determine which version to use
             let selectedVersion;
-
             if (Array.isArray(mjson["url"])) {
                 if (version) {
-                    // Find specific version
                     selectedVersion = mjson["url"].find(v => 
                         v.versionRule.toLowerCase() === version.toLowerCase()
                     );
                 } else {
-                    // Default to the first one if no version specified
                     selectedVersion = mjson["url"][0];
                 }
             } else if (typeof mjson["url"] === "string") {
-                // Handle cases where "url" might just be a string instead of an array
                 selectedVersion = { url: mjson["url"] };
             }
 
-            // 4. Execute download
             if (selectedVersion) {
                 const downloadUrl = selectedVersion.url;
-                
-                // Determine extension logic
                 const extension = downloadUrl.includes("zipball")
                     ? ".zip"
-                    : "." + downloadUrl.split(".").at(-1);
+                    : "." + downloadUrl.split(".").at(-1).split('?')[0];
 
                 const finalDestination = destination || (module["name"] + extension);
 
                 console.log(chalk.blue(`Downloading to ${finalDestination}...`));
-                
-                // Note: If download is async, you should probably 'await' it
                 await download(downloadUrl, finalDestination);
                 console.log(chalk.green("Download complete!"));
             } else {
@@ -67,6 +58,86 @@ program
 
         } catch (error) {
             console.error(chalk.red("An error occurred:"), error.message);
+        }
+    });
+
+// --- CLONE COMMAND (Downloads everything using registry paths) ---
+program
+    .command("clone")
+    .description("Clones the entire registry using defined paths and all versions")
+    .action(async function () {
+        try {
+            console.log(chalk.cyan("Fetching registry..."));
+            const response = await fetch("https://stoppedwumm-studios.github.io/st-registry/index.json");
+            const modulesData = await response.json();
+            const modules = modulesData.modules;
+
+            for (const module of modules) {
+                console.log(chalk.yellow(`\nProcessing module: ${module.name}`));
+                
+                const mjson = await (await fetch(module.url)).json();
+                
+                // Create the directory based on the "path" key (e.g., "m/minecraft")
+                const targetDir = module.path;
+                if (!fs.existsSync(targetDir)) {
+                    fs.mkdirSync(targetDir, { recursive: true });
+                }
+
+                // Handle modules that have multiple versions
+                const versions = Array.isArray(mjson.url) 
+                    ? mjson.url 
+                    : [{ versionRule: "latest", url: mjson.url }];
+
+                for (const v of versions) {
+                    const downloadUrl = v.url;
+                    const versionName = v.versionRule || "default";
+                    
+                    // --- SMART EXTENSION DETECTION ---
+                    const urlObj = new URL(downloadUrl);
+                    const lastSegment = urlObj.pathname.split('/').pop();
+                    
+                    let extension = "";
+                    const commonExts = ['zip', 'jar', 'exe', 'msi', 'dmg', 'json', 'apk', 'tar', 'gz', '7z'];
+
+                    if (downloadUrl.includes("zipball") || downloadUrl.includes("/zip/")) {
+                        extension = ".zip";
+                    } else if (lastSegment.includes(".")) {
+                        const parts = lastSegment.split('.');
+                        const potentialExt = parts.pop().toLowerCase();
+                        
+                        // Check if it's a real extension or just a version number (like .1)
+                        if (commonExts.includes(potentialExt) || isNaN(potentialExt)) {
+                            extension = "." + potentialExt;
+                        }
+                    }
+
+                    // --- FALLBACK GUESSING ---
+                    // If no extension found, check for keywords in the URL
+                    if (!extension) {
+                        if (downloadUrl.toLowerCase().includes("installer")) extension = ".exe";
+                        else if (downloadUrl.toLowerCase().includes("mac") || downloadUrl.toLowerCase().includes("osx")) extension = ".dmg";
+                        else if (downloadUrl.toLowerCase().includes("json")) extension = ".json";
+                    }
+
+                    // Sanitize version name (remove slashes) to keep files inside the module folder
+                    const safeVersionName = versionName.replace(/[/\\?%*:|"<>]/g, '-');
+                    const fileName = `${module.name}-${safeVersionName}${extension}`;
+                    
+                    const finalDestination = path.join(targetDir, fileName);
+
+                    console.log(chalk.blue(`  -> Downloading version [${versionName}] to ${finalDestination}...`));
+                    
+                    try {
+                        await download(downloadUrl, finalDestination);
+                    } catch (dlErr) {
+                        console.error(chalk.red(`  Failed to download ${versionName}:`), dlErr.message);
+                    }
+                }
+                console.log(chalk.green(`Successfully processed all versions for ${module.name}`));
+            }
+            console.log(chalk.bold.green("\nRegistry cloning complete!"));
+        } catch (error) {
+            console.error(chalk.red("An error occurred during cloning:"), error.message);
         }
     });
 
