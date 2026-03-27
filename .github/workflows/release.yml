@@ -19,6 +19,9 @@ jobs:
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
-      - run: node chore/updatePackage.js {{ event.release.version-without-v }}
+      - name: Get Version
+        uses: battila7/get-version-action@v2.2.1
+      
+      - run: node chore/updatePackage.js {{ steps.get_version.outputs.release.version-without-v }}
       - run: npm ci
       - run: npm publish
