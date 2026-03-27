@@ -20,8 +20,6 @@ jobs:
           node-version: '16.20.2'
           registry-url: 'https://registry.npmjs.org'
       - run: npm ci
-      - name: Get Version
-        uses: battila7/get-version-action@v2.2.1
       
-      - run: node chore/updatePackage.js ${{ steps.get_version.outputs.release.version-without-v }}
+      - run: node chore/updatePackage.js ${{ GITHUB_REF_NAME }}
       - run: npm publish

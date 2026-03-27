@@ -15,7 +15,7 @@ if (!version) {
     process.exit(1);
 }
 
-packageData.version = version;
+packageData.version = version.replace(/^v/, ""); // Remove leading 'v' if present
 
 fs.writeFileSync("package.json", JSON.stringify(packageData, null, 2));
 
