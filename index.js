@@ -6,7 +6,7 @@ import fetch from "node-fetch";
 import fs from "fs";
 import path from "path";
 
-// --- INSTALL COMMAND (For individual downloads) ---
+// --- INSTALL COMMAND ---
 program
     .command("install <name> [destination] [version]")
     .description("Downloads package")
@@ -26,8 +26,7 @@ program
             }
 
             const mjson = await (await fetch(module["url"])).json();
-            console.log("Found module under path:", chalk.bold(module["path"]));
-
+            
             let selectedVersion;
             if (Array.isArray(mjson["url"])) {
                 if (version) {
@@ -43,47 +42,49 @@ program
 
             if (selectedVersion) {
                 const downloadUrl = selectedVersion.url;
-                const extension = downloadUrl.includes("zipball")
-                    ? ".zip"
-                    : "." + downloadUrl.split(".").at(-1).split('?')[0];
+                let extension = "";
+                
+                // 1. Check if it's a GitHub API zipball
+                if (downloadUrl.includes("zipball") || downloadUrl.includes("/archive/")) {
+                    extension = ".zip";
+                } else {
+                    // 2. Extract extension from filename if it exists
+                    const lastPart = downloadUrl.split('/').pop().split('?')[0];
+                    if (lastPart.includes(".")) {
+                        const ext = lastPart.split('.').pop();
+                        if (isNaN(ext)) extension = "." + ext;
+                    }
+                }
 
                 const finalDestination = destination || (module["name"] + extension);
-
                 console.log(chalk.blue(`Downloading to ${finalDestination}...`));
                 await download(downloadUrl, finalDestination);
                 console.log(chalk.green("Download complete!"));
-            } else {
-                console.error(chalk.red(`Version "${version}" not found for this module.`));
             }
-
         } catch (error) {
             console.error(chalk.red("An error occurred:"), error.message);
         }
     });
 
-// --- CLONE COMMAND (Downloads everything using registry paths) ---
+// --- CLONE COMMAND ---
 program
     .command("clone")
     .description("Clones the entire registry using defined paths and all versions")
     .action(async function () {
         try {
-            console.log(chalk.cyan("Fetching registry..."));
             const response = await fetch("https://stoppedwumm-studios.github.io/st-registry/index.json");
             const modulesData = await response.json();
             const modules = modulesData.modules;
 
             for (const module of modules) {
                 console.log(chalk.yellow(`\nProcessing module: ${module.name}`));
-                
                 const mjson = await (await fetch(module.url)).json();
                 
-                // Create the directory based on the "path" key (e.g., "m/minecraft")
                 const targetDir = module.path;
                 if (!fs.existsSync(targetDir)) {
                     fs.mkdirSync(targetDir, { recursive: true });
                 }
 
-                // Handle modules that have multiple versions
                 const versions = Array.isArray(mjson.url) 
                     ? mjson.url 
                     : [{ versionRule: "latest", url: mjson.url }];
@@ -92,52 +93,55 @@ program
                     const downloadUrl = v.url;
                     const versionName = v.versionRule || "default";
                     
-                    // --- SMART EXTENSION DETECTION ---
-                    const urlObj = new URL(downloadUrl);
-                    const lastSegment = urlObj.pathname.split('/').pop();
-                    
                     let extension = "";
-                    const commonExts = ['zip', 'jar', 'exe', 'msi', 'dmg', 'json', 'apk', 'tar', 'gz', '7z'];
+                    
+                    // --- REFINED EXTENSION LOGIC (No guessing) ---
 
-                    if (downloadUrl.includes("zipball") || downloadUrl.includes("/zip/")) {
+                    // 1. If it's a GitHub API Zipball, it's a .zip
+                    if (downloadUrl.includes("zipball") || downloadUrl.includes("/archive/")) {
                         extension = ".zip";
-                    } else if (lastSegment.includes(".")) {
-                        const parts = lastSegment.split('.');
-                        const potentialExt = parts.pop().toLowerCase();
-                        
-                        // Check if it's a real extension or just a version number (like .1)
-                        if (commonExts.includes(potentialExt) || isNaN(potentialExt)) {
-                            extension = "." + potentialExt;
+                    } 
+                    // 2. If the URL filename has an extension (like .jar or .zip), use it
+                    else {
+                        try {
+                            const urlPath = new URL(downloadUrl).pathname;
+                            const lastSegment = urlPath.split('/').pop();
+                            
+                            if (lastSegment.includes(".")) {
+                                const potentialExt = lastSegment.split('.').pop();
+                                // Ensure it's not a version number (like v1.2.1 ending in .1)
+                                if (isNaN(potentialExt)) {
+                                    extension = "." + potentialExt;
+                                }
+                            }
+                        } catch (e) {
+                            // Fallback if URL is malformed
                         }
                     }
 
-                    // --- FALLBACK GUESSING ---
-                    // If no extension found, check for keywords in the URL
-                    if (!extension) {
-                        if (downloadUrl.toLowerCase().includes("installer")) extension = ".exe";
-                        else if (downloadUrl.toLowerCase().includes("mac") || downloadUrl.toLowerCase().includes("osx")) extension = ".dmg";
-                        else if (downloadUrl.toLowerCase().includes("json")) extension = ".json";
-                    }
-
-                    // Sanitize version name (remove slashes) to keep files inside the module folder
+                    // 3. Build filename
+                    // Result: "hyperPatchClient-v1.2.1" (No .dmg added!)
                     const safeVersionName = versionName.replace(/[/\\?%*:|"<>]/g, '-');
                     const fileName = `${module.name}-${safeVersionName}${extension}`;
-                    
                     const finalDestination = path.join(targetDir, fileName);
 
-                    console.log(chalk.blue(`  -> Downloading version [${versionName}] to ${finalDestination}...`));
+                    console.log(chalk.blue(`  -> Downloading [${versionName}] to ${finalDestination}...`));
                     
                     try {
                         await download(downloadUrl, finalDestination);
+                        
+                        // Set execution permissions for raw binaries on Mac/Linux
+                        if (extension === "" && process.platform !== "win32") {
+                            fs.chmodSync(finalDestination, 0o755);
+                        }
                     } catch (dlErr) {
                         console.error(chalk.red(`  Failed to download ${versionName}:`), dlErr.message);
                     }
                 }
-                console.log(chalk.green(`Successfully processed all versions for ${module.name}`));
             }
             console.log(chalk.bold.green("\nRegistry cloning complete!"));
         } catch (error) {
-            console.error(chalk.red("An error occurred during cloning:"), error.message);
+            console.error(chalk.red("An error occurred:"), error.message);
         }
     });
 
