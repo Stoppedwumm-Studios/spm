@@ -6,25 +6,24 @@ on:
       - 'v*'
 
 permissions:
-  id-token: write
-  contents: read
+  id-token: write   # This allows GitHub to give npm a temporary OIDC token
+  contents: read    # Allows the action to read your code
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v4
         with:
-          node-version: '20' # Use Node 20+ for Trusted Publishing support
-          # REMOVE registry-url if you aren't using a secret token. 
-          # npm will auto-detect the OIDC environment.
+          node-version: '20' # Use 20 or higher for OIDC support
+          # DO NOT use registry-url here when using Trusted Publishing
 
       - run: npm ci
       
       - run: node chore/updatePackage.js ${{ github.ref_name }}
       
-      # Use --provenance to link the build to GitHub Actions
-      # Use --access public if this is the first time publishing this package
+      # The --provenance flag is what triggers the OIDC "handshake" 
+      # with the Trusted Publisher settings you just configured.
       - run: npm publish --provenance --access public
