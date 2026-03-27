@@ -5,25 +5,27 @@ on:
     tags:
       - 'v*'
 
-permissions:
-  id-token: write   # Mandatory for Trusted Publishing
-  contents: read    # Mandatory to check out code
-
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20' # Mandatory: Must be 20 or higher
-          # DO NOT include 'registry-url' here. 
-          # It interferes with the OIDC/Trusted Publisher flow.
+          node-version: '20'
 
       - run: npm ci
       
+      # Ensure your script removes the 'v' from the version string!
       - run: node chore/updatePackage.js ${{ github.ref_name }}
       
-      # This command triggers the passwordless exchange with npm
-      - run: npm publish --provenance --access public
+      # 1. We double check the version is correct in the logs
+      # 2. We publish while explicitly ignoring any local .npmrc auth
+      - run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "Publishing version: $VERSION"
+          npm publish --provenance --access public --registry=https://registry.npmjs.org/
