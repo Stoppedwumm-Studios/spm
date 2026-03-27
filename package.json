@@ -16,5 +16,8 @@
   },
   "bin": {
     "spm": "index.js"
+  },
+  "repository": {
+    "url": "Stoppedwumm-Studios/spm"
   }
 }
