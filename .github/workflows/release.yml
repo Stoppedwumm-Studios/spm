@@ -23,5 +23,5 @@ jobs:
       - name: Get Version
         uses: battila7/get-version-action@v2.2.1
       
-      - run: node chore/updatePackage.js {{ steps.get_version.outputs.release.version-without-v }}
+      - run: node chore/updatePackage.js ${{ steps.get_version.outputs.release.version-without-v }}
       - run: npm publish
