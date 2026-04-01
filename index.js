@@ -145,4 +145,22 @@ program
         }
     });
 
+program
+    .command("ls")
+    .description("Lists all repositories in the registry")
+    .action(async function () {
+        try {
+            const response = await fetch("https://stoppedwumm-studios.github.io/st-registry/");
+            const modulesData = await response.json();
+            const modules = modulesData.modules;
+
+            console.log(chalk.bold.blue("Available Modules in Registry:"));
+            modules.forEach(m => {
+                console.log(chalk.green(`- ${m.path}: ${m.name} - ${m.url}`));
+            });
+        } catch (error) {
+            console.error(chalk.red("An error occurred:"), error.message);
+        }
+    });
+
 program.parse();
