@@ -1,10 +1,17 @@
 #!/usr/bin/env node
-import { program } from "commander";
+import { Argument, program } from "commander";
 import chalk from "chalk";
 import { download } from "./download.js";
 import fetch from "node-fetch";
 import fs from "fs";
 import path from "path";
+import { Document } from "flexsearch";
+import pkg from "./package.json" with { type: "json" };
+
+program
+    .name("spm")
+    .description("A simple package manager for StoppedWumm Studios projects")
+    .version(pkg.version);
 
 // --- INSTALL COMMAND ---
 program
@@ -16,7 +23,7 @@ program
             const modulesData = await response.json();
             const modules = modulesData.modules;
 
-            const module = modules.find(m => 
+            const module = modules.find(m =>
                 m.name.toLowerCase() === name.toLowerCase()
             );
 
@@ -26,11 +33,11 @@ program
             }
 
             const mjson = await (await fetch(module["url"])).json();
-            
+
             let selectedVersion;
             if (Array.isArray(mjson["url"])) {
                 if (version) {
-                    selectedVersion = mjson["url"].find(v => 
+                    selectedVersion = mjson["url"].find(v =>
                         v.versionRule.toLowerCase() === version.toLowerCase()
                     );
                 } else {
@@ -43,7 +50,7 @@ program
             if (selectedVersion) {
                 const downloadUrl = selectedVersion.url;
                 let extension = "";
-                
+
                 // 1. Check if it's a GitHub API zipball
                 if (downloadUrl.includes("zipball") || downloadUrl.includes("/archive/")) {
                     extension = ".zip";
@@ -79,34 +86,34 @@ program
             for (const module of modules) {
                 console.log(chalk.yellow(`\nProcessing module: ${module.name}`));
                 const mjson = await (await fetch(module.url)).json();
-                
+
                 const targetDir = module.path;
                 if (!fs.existsSync(targetDir)) {
                     fs.mkdirSync(targetDir, { recursive: true });
                 }
 
-                const versions = Array.isArray(mjson.url) 
-                    ? mjson.url 
+                const versions = Array.isArray(mjson.url)
+                    ? mjson.url
                     : [{ versionRule: "latest", url: mjson.url }];
 
                 for (const v of versions) {
                     const downloadUrl = v.url;
                     const versionName = v.versionRule || "default";
-                    
+
                     let extension = "";
-                    
+
                     // --- REFINED EXTENSION LOGIC (No guessing) ---
 
                     // 1. If it's a GitHub API Zipball, it's a .zip
                     if (downloadUrl.includes("zipball") || downloadUrl.includes("/archive/")) {
                         extension = ".zip";
-                    } 
+                    }
                     // 2. If the URL filename has an extension (like .jar or .zip), use it
                     else {
                         try {
                             const urlPath = new URL(downloadUrl).pathname;
                             const lastSegment = urlPath.split('/').pop();
-                            
+
                             if (lastSegment.includes(".")) {
                                 const potentialExt = lastSegment.split('.').pop();
                                 // Ensure it's not a version number (like v1.2.1 ending in .1)
@@ -126,10 +133,10 @@ program
                     const finalDestination = path.join(targetDir, fileName);
 
                     console.log(chalk.blue(`  -> Downloading [${versionName}] to ${finalDestination}...`));
-                    
+
                     try {
                         await download(downloadUrl, finalDestination);
-                        
+
                         // Set execution permissions for raw binaries on Mac/Linux
                         if (extension === "" && process.platform !== "win32") {
                             fs.chmodSync(finalDestination, 0o755);
@@ -148,11 +155,49 @@ program
 program
     .command("ls")
     .description("Lists all repositories in the registry")
-    .action(async function () {
+    .option("-f, --filter <keyword>", "Filter modules by name or path")
+    // Destructure { filter } from the options object
+    .action(async function ({ filter }) { 
         try {
-            const response = await fetch("https://stoppedwumm-studios.github.io/st-registry/");
+            // Fix: ensure the URL points to the JSON file
+            const response = await fetch("https://stoppedwumm-studios.github.io/st-registry/index.json");
             const modulesData = await response.json();
             const modules = modulesData.modules;
+
+            if (filter) {
+                // Use Document for multi-field indexing
+                const index = new Document({
+                    tokenize: "forward",
+                    document: {
+                        id: "path",
+                        index: ["name", "path"]
+                    }
+                });
+
+                modules.forEach(m => index.add(m));
+
+                // FlexSearch Document search returns results grouped by field
+                const results = index.search(filter);
+                
+                // Extract unique IDs (paths) from the results
+                const matchedPaths = new Set();
+                results.forEach(res => {
+                    res.result.forEach(id => matchedPaths.add(id));
+                });
+
+                const filteredModules = modules.filter(m => matchedPaths.has(m.path));
+
+                if (filteredModules.length === 0) {
+                    console.log(chalk.yellow(`No modules found matching "${filter}"`));
+                    return;
+                }
+
+                console.log(chalk.bold.blue(`Modules matching filter "${filter}":`));
+                filteredModules.forEach(m => {
+                    console.log(chalk.green(`- ${m.path}: ${m.name} - ${m.url}`));
+                });
+                return;
+            }
 
             console.log(chalk.bold.blue("Available Modules in Registry:"));
             modules.forEach(m => {
