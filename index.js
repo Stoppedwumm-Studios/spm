@@ -202,19 +202,15 @@ program
 
             // --- Version Resolution Logic ---
             if (Array.isArray(details.url)) {
-                // Check if the provided 'version' matches a versionRule in the JSON
                 const foundVersion = version ? details.url.find(v => v.versionRule.toLowerCase() === version.toLowerCase()) : null;
                 
                 if (foundVersion) {
                     selectedVersion = foundVersion;
                 } else {
-                    // If the version provided isn't a valid version name, it's likely actually the first argument.
-                    // Push it to the front of the args array and use the latest (index 0) version.
                     if (version) finalArgs.unshift(version);
                     selectedVersion = details.url[0];
                 }
             } else {
-                // If it's not an array, details is the version object
                 if (version) finalArgs.unshift(version);
                 selectedVersion = details;
             }
@@ -231,7 +227,13 @@ program
 
             // --- Download ---
             const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'spm-'));
-            const tempFile = path.join(tempDir, path.basename(selectedVersion.url));
+            // Ensure filename ends in .exe if it's a Windows binary
+            let fileName = path.basename(selectedVersion.url);
+            if (selectedVersion.execType === "bin" && process.platform === "win32" && !fileName.toLowerCase().endsWith('.exe')) {
+                fileName += ".exe";
+            }
+            
+            const tempFile = path.join(tempDir, fileName);
             
             console.log(chalk.blue(`Downloading [${selectedVersion.versionRule || 'latest'}] to: ${tempFile}`));
             await download(selectedVersion.url, tempFile);
@@ -243,20 +245,24 @@ program
                 child = spawn("java", ["-jar", tempFile, ...finalArgs], { stdio: "inherit" });
             } else if (selectedVersion.execType === "osx" || selectedVersion.execType === "bin") {
                 console.log(chalk.yellow(`Launching Binary with args: ${finalArgs.join(' ')}`));
-                fs.chmodSync(tempFile, 0o755);
-                child = spawn(tempFile, finalArgs, { stdio: "inherit" });
+                
+                // Only chmod if not on Windows
+                if (process.platform !== "win32") {
+                    fs.chmodSync(tempFile, 0o755);
+                }
+                
+                // On Windows, spawn handles .exe files natively
+                child = spawn(tempFile, finalArgs, { stdio: "inherit", shell: process.platform === "win32" });
             } else {
                 console.error(chalk.red(`Unsupported execType: ${selectedVersion.execType}`));
                 fs.rmSync(tempDir, { recursive: true, force: true });
                 return;
             }
 
-            // --- Cleanup ---
+            // ... (rest of cleanup logic remains the same)
             child.on("close", (code) => {
                 console.log(chalk.blue(`\nModule execution finished with code ${code}`));
-                try {
-                    fs.rmSync(tempDir, { recursive: true, force: true });
-                } catch (e) {}
+                try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (e) {}
             });
 
             child.on("error", (err) => {
