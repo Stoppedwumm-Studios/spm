@@ -227,7 +227,8 @@ program
 
             // --- Download ---
             const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'spm-'));
-            // Ensure filename ends in .exe if it's a Windows binary
+            
+            // Handle naming for Windows .exe files
             let fileName = path.basename(selectedVersion.url);
             if (selectedVersion.execType === "bin" && process.platform === "win32" && !fileName.toLowerCase().endsWith('.exe')) {
                 fileName += ".exe";
@@ -246,12 +247,11 @@ program
             } else if (selectedVersion.execType === "osx" || selectedVersion.execType === "bin") {
                 console.log(chalk.yellow(`Launching Binary with args: ${finalArgs.join(' ')}`));
                 
-                // Only chmod if not on Windows
+                // Only set permissions on non-Windows systems
                 if (process.platform !== "win32") {
                     fs.chmodSync(tempFile, 0o755);
                 }
                 
-                // On Windows, spawn handles .exe files natively
                 child = spawn(tempFile, finalArgs, { stdio: "inherit", shell: process.platform === "win32" });
             } else {
                 console.error(chalk.red(`Unsupported execType: ${selectedVersion.execType}`));
@@ -259,7 +259,7 @@ program
                 return;
             }
 
-            // ... (rest of cleanup logic remains the same)
+            // --- Cleanup ---
             child.on("close", (code) => {
                 console.log(chalk.blue(`\nModule execution finished with code ${code}`));
                 try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (e) {}
