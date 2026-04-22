@@ -1,3 +1,64 @@
-# Compile the executable for Windows
-      - name: Build executable
-        run: bun build --compile --target=bun-windows-x64 index.js --outfile index.exe
+name: Publish Package
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Global permissions for both jobs
+permissions:
+  id-token: write  # Required by npm-publish for Trusted Publishing (provenance)
+  contents: write  # Required by windows-build to upload the .exe to GitHub Releases
+
+jobs:
+  # ----------------------------------------------------
+  # JOB 1: Publish to NPM (Runs on Ubuntu)
+  # ----------------------------------------------------
+  npm-publish:
+    name: Publish to NPM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Install Dependencies
+        run: npm ci
+      
+      - name: Update Version
+        run: |
+          CLEAN_VERSION=$(echo "${{ github.ref_name }}" | sed 's/^v//')
+          npm version $CLEAN_VERSION --no-git-tag-version
+
+      - name: Publish to NPM
+        run: npm publish --provenance --access public
+
+  # ----------------------------------------------------
+  # JOB 2: Build & Upload .exe (Runs on Windows)
+  # ----------------------------------------------------
+  windows-build:
+    name: Build Windows Executable
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      # Required so Bun has access to the libraries it needs to compile
+      - name: Install Dependencies
+        run: bun install
+
+      # Because this runs natively on windows-latest, it automatically targets Windows
+      - name: Compile Executable
+        run: bun build --compile index.js --outfile index.exe
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: index.exe
