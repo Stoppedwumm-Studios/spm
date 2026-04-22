@@ -7,7 +7,7 @@ on:
 
 permissions:
   id-token: write  # This is the "key" for Trusted Publishing
-  contents: read
+  contents: write  # UPGRADED: 'write' is required to upload files to GitHub Releases
 
 jobs:
   publish:
@@ -32,3 +32,17 @@ jobs:
       # The --provenance flag tells npm: 
       # "Don't look for a token. Use my GitHub OIDC identity instead."
       - run: npm publish --provenance --access public
+
+      # Set up Bun
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      # Compile the executable
+      - name: Build executable
+        run: bun build --compile index.js --outfile index.exe
+
+      # Upload the compiled executable to the tag's GitHub Release
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: index.exe
