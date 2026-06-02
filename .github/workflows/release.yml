@@ -40,9 +40,6 @@ jobs:
             npm publish --provenance --access public
           fi
 
-      - name: Publish to NPM
-        run: npm publish --provenance --access public
-
   # ----------------------------------------------------
   # JOB 2: Build & Upload .exe (Runs on Windows)
   # ----------------------------------------------------
