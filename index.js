@@ -9,6 +9,9 @@ import { Document } from "flexsearch";
 import pkg from "./package.json" with { type: "json" };
 import { spawn } from "child_process";
 import os from "os";
+import { loadConfig, getConfigValue } from "./config.js";
+
+const config = loadConfig();
 
 program
     .name("spm")
@@ -20,7 +23,7 @@ program
  */
 async function getModuleInfo(name) {
     try {
-        const response = await fetch("https://stoppedwumm-studios.github.io/st-registry/index.json");
+        const response = await fetch(config.registryUrl);
         const modulesData = await response.json();
         const moduleEntry = modulesData.modules.find(m => m.name.toLowerCase() === name.toLowerCase());
 
@@ -90,7 +93,7 @@ program
     .description("Clones the entire registry using defined paths and all versions")
     .action(async function () {
         try {
-            const response = await fetch("https://stoppedwumm-studios.github.io/st-registry/index.json");
+            const response = await fetch(config.registryUrl);
             const modulesData = await response.json();
             const modules = modulesData.modules;
 
@@ -153,7 +156,7 @@ program
     .option("-f, --filter <keyword>", "Filter modules by name or path")
     .action(async function ({ filter }) {
         try {
-            const response = await fetch("https://stoppedwumm-studios.github.io/st-registry/index.json");
+            const response = await fetch(config.registryUrl);
             const modulesData = await response.json();
             const modules = modulesData.modules;
 
