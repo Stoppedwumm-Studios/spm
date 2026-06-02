@@ -5,15 +5,11 @@ on:
     tags:
       - 'v*'
 
-# Global permissions for both jobs
 permissions:
-  id-token: write  # Required by npm-publish for Trusted Publishing (provenance)
-  contents: write  # Required by windows-build to upload the .exe to GitHub Releases
+  id-token: write
+  contents: write
 
 jobs:
-  # ----------------------------------------------------
-  # JOB 1: Publish to NPM (Runs on Ubuntu)
-  # ----------------------------------------------------
   npm-publish:
     name: Publish to NPM
     runs-on: ubuntu-latest
@@ -25,42 +21,39 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Install Dependencies
         run: npm ci
       
-      - name: Publish to NPM
+      - name: Update Version
         run: |
-          # Check if the version string contains a hyphen (e.g., 1.0.0-beta)
+          CLEAN_VERSION=$(echo "${{ github.ref_name }}" | sed 's/^v//')
+          npm version $CLEAN_VERSION --no-git-tag-version
+
+      - name: Publish to NPM
+        # Added logic to handle prerelease tags
+        run: |
           if [[ "${{ github.ref_name }}" == *"-"* ]]; then
-            echo "Prerelease detected. Publishing with --tag next"
             npm publish --provenance --access public --tag next
           else
-            echo "Stable release detected. Publishing with default tag (latest)"
             npm publish --provenance --access public
           fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-  # ----------------------------------------------------
-  # JOB 2: Build & Upload .exe (Runs on Windows)
-  # ----------------------------------------------------
   windows-build:
     name: Build Windows Executable
     runs-on: windows-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
-
-      # Required so Bun has access to the libraries it needs to compile
       - name: Install Dependencies
         run: bun install
-
-      # Because this runs natively on windows-latest, it automatically targets Windows
       - name: Compile Executable
         run: bun build --compile index.js --outfile index.exe
-
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
